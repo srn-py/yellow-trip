@@ -1,4 +1,3 @@
-
 """Security and operations rules for the production stack, written as tests so they cannot erode quietly."""
 
 import re
@@ -84,9 +83,7 @@ def test_the_proxy_is_on_the_edge_network_only():
 
 
 def test_every_variable_the_stack_cannot_start_without_is_in_the_example_env_file():
-    example = env_keys(
-        (ROOT / ".env.prod.example").read_text(encoding="utf-8")
-    )
+    example = env_keys((ROOT / ".env.prod.example").read_text(encoding="utf-8"))
     assert required_variables(COMPOSE_TEXT) - example == set()
 
 
@@ -122,12 +119,7 @@ def caddy_blocks(text: str) -> dict[str, str]:
     current = None
 
     for line in text.splitlines():
-        if (
-            line
-            and not line[0].isspace()
-            and line.rstrip().endswith("{")
-            and line[0] not in "({"
-        ):
+        if line and not line[0].isspace() and line.rstrip().endswith("{") and line[0] not in "({":
             current = line.rstrip(" {")
             blocks[current] = ""
         elif current is not None:

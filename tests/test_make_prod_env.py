@@ -50,9 +50,7 @@ def build(**overrides) -> str:
 
 
 def test_the_generated_file_sets_every_variable_the_stack_requires():
-    compose_text = (
-        ROOT / "docker-compose.prod.yml"
-    ).read_text(encoding="utf-8")
+    compose_text = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
 
     assert required_variables(compose_text) - env_keys(build()) == set()
 
@@ -93,10 +91,7 @@ def test_production_mode_uses_the_real_domain_standard_ports_and_the_public_cadd
         data["HTTPS_PORT"],
     ) == ("taxi.example.com", "Caddyfile", "80", "443")
 
-    assert (
-        data["GRAFANA_ROOT_URL"]
-        == "https://grafana.taxi.example.com"
-    )
+    assert data["GRAFANA_ROOT_URL"] == "https://grafana.taxi.example.com"
     assert data["IMAGE_TAG"] == "1.0.0"
 
 
@@ -117,16 +112,11 @@ def test_local_mode_uses_localhost_high_ports_and_local_images():
         data["HTTPS_PORT"],
     ) == ("Caddyfile.local", "8088", "8443")
 
-    assert (
-        data["GRAFANA_ROOT_URL"]
-        == "https://grafana.localhost:8443"
-    )
+    assert data["GRAFANA_ROOT_URL"] == "https://grafana.localhost:8443"
     assert (data["GHCR_OWNER"], data["IMAGE_TAG"]) == ("local", "local")
 
 
-def test_main_writes_the_file_readable_only_by_its_owner_and_will_not_overwrite(
-    tmp_path, monkeypatch, capsys
-):
+def test_main_writes_the_file_readable_only_by_its_owner_and_will_not_overwrite(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(make_prod_env, "hash_with_caddy", fake_hash)
     target = tmp_path / ".env.prod"
 
@@ -137,15 +127,9 @@ def test_main_writes_the_file_readable_only_by_its_owner_and_will_not_overwrite(
     with pytest.raises(SystemExit):
         make_prod_env.main(["--local", "--output", str(target)])
 
-    assert (
-        make_prod_env.main(
-            ["--local", "--force", "--output", str(target)]
-        )
-        == 0
-    )
+    assert make_prod_env.main(["--local", "--force", "--output", str(target)]) == 0
 
 
 def test_main_requires_the_deployment_details_unless_local(tmp_path):
     with pytest.raises(SystemExit):
         make_prod_env.main(["--output", str(tmp_path / "x")])
-
