@@ -95,7 +95,7 @@ jobs:
       - name: Start the throw-away stack
         run: docker compose --env-file .env.example -f docker-compose.integration.yml -p taxi-it up -d --build --wait --wait-timeout 900
       - name: Run the end-to-end test
-        run: pytest -m integration tests/integration -p no:cacheprovider
+        run: pytest --noconftest -m integration tests/integration -p no:cacheprovider
       - name: Show service logs if something failed
         if: failure()
         run: docker compose --env-file .env.example -f docker-compose.integration.yml -p taxi-it logs --tail=100
