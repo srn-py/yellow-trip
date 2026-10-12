@@ -4,7 +4,6 @@ import itertools
 from pathlib import Path
 
 import pytest
-
 from compose_helpers import env_keys, required_variables
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,7 +48,16 @@ def test_the_generated_file_sets_every_variable_the_stack_requires():
 
 def test_every_secret_is_long_and_different():
     data = values(build())
-    secrets_ = [data[key] for key in ("S3_ACCESS_KEY", "S3_SECRET_KEY", "POSTGRES_PASSWORD", "AIRFLOW_DB_PASSWORD", "GRAFANA_ADMIN_PASSWORD")]
+    secrets_ = [
+        data[key]
+        for key in (
+            "S3_ACCESS_KEY",
+            "S3_SECRET_KEY",
+            "POSTGRES_PASSWORD",
+            "AIRFLOW_DB_PASSWORD",
+            "GRAFANA_ADMIN_PASSWORD",
+        )
+    ]
     assert all(len(secret) >= 16 for secret in secrets_)
     assert len(set(secrets_)) == len(secrets_)
     assert len(data["AIRFLOW_JWT_SECRET"]) >= 64

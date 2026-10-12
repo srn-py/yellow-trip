@@ -155,9 +155,7 @@ def _storage_from_settings():
     from shared.storage import ObjectStorage
 
     settings = get_settings()
-    return ObjectStorage(
-        settings.s3_endpoint_url, settings.s3_access_key, settings.s3_secret_key, settings.s3_region
-    )
+    return ObjectStorage(settings.s3_endpoint_url, settings.s3_access_key, settings.s3_secret_key, settings.s3_region)
 
 
 def main(argv: list[str] | None = None) -> int:

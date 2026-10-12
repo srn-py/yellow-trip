@@ -7,7 +7,6 @@ All content comes from `dashboard_app/flows.py`.
 """
 
 import streamlit as st
-
 from dashboard_app import flows
 
 st.title("How the platform works")
@@ -34,9 +33,7 @@ st.markdown(
 )
 
 options = {flow.key: flow for flow in flows.FLOWS}
-selected = st.selectbox(
-    "What starts the flow?", options=list(options), format_func=lambda key: options[key].title
-)
+selected = st.selectbox("What starts the flow?", options=list(options), format_func=lambda key: options[key].title)
 flow = options[selected]
 st.markdown(f"**{flow.summary}**")
 

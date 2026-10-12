@@ -21,7 +21,7 @@ COLOR_PENDING = "#8a8a8a"  # steps still to come
 
 @dataclass(frozen=True)
 class Node:
-    """One box in the diagram.
+    r"""One box in the diagram.
 
     Attributes:
         key: Short identifier used in the steps' arrows.
@@ -505,7 +505,9 @@ def _node_line(node: Node, state: str) -> str:
     else:
         border = COLOR_CURRENT if state == "current" else "#555555"
         width = 3 if state == "current" else 1.2
-        style = f'shape={shape}, style=filled, fillcolor="{fill}", color="{border}", penwidth={width}, fontcolor="#111111"'
+        style = (
+            f'shape={shape}, style=filled, fillcolor="{fill}", color="{border}", penwidth={width}, fontcolor="#111111"'
+        )
     return f'{node.key} [label="{label}", {style}];'
 
 
@@ -570,7 +572,9 @@ def build_dot(flow: Flow, step: int = 0) -> str:
         lines += [f"    {_node_line(NODE_BY_KEY[key], node_state(key))}" for key in members]
         lines.append("  }")
 
-    lines += [f"  {_node_line(NODE_BY_KEY[key], node_state(key))}" for key in involved if NODE_BY_KEY[key].cluster is None]
+    lines += [
+        f"  {_node_line(NODE_BY_KEY[key], node_state(key))}" for key in involved if NODE_BY_KEY[key].cluster is None
+    ]
 
     anchors = [key for key in involved if NODE_BY_KEY[key].kind in ("trigger", "external")]
     if anchors:

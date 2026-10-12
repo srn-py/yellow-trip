@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from compose_helpers import env_keys, required_variables
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +13,17 @@ COMPOSE_TEXT = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
 COMPOSE = yaml.safe_load(COMPOSE_TEXT)
 SERVICES = COMPOSE["services"]
 NAMES = sorted(SERVICES)
-APP_SERVICES = ["ingestion", "cleaning", "etl", "analytics", "dashboard", "quality", "warehouse", "airflow-db", "airflow"]
+APP_SERVICES = [
+    "ingestion",
+    "cleaning",
+    "etl",
+    "analytics",
+    "dashboard",
+    "quality",
+    "warehouse",
+    "airflow-db",
+    "airflow",
+]
 CADDYFILES = ["deploy/Caddyfile", "deploy/Caddyfile.local"]
 LOGIN_PROTECTED = {"dashboard", "airflow", "ingestion"}
 
@@ -51,7 +60,16 @@ def test_no_service_sets_a_fixed_container_name_so_it_never_clashes_with_the_dev
 
 
 def test_databases_and_the_object_store_are_not_reachable_from_the_proxy_network():
-    for name in ("warehouse", "airflow-db", "objectstore", "prometheus", "alertmanager", "cleaning", "etl", "analytics"):
+    for name in (
+        "warehouse",
+        "airflow-db",
+        "objectstore",
+        "prometheus",
+        "alertmanager",
+        "cleaning",
+        "etl",
+        "analytics",
+    ):
         assert SERVICES[name]["networks"] == ["backend"], name
 
 

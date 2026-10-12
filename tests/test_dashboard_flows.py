@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import pytest
-
 from dashboard_app import flows
 from dashboard_app.flows import COLOR_CURRENT, COLOR_DONE, COLOR_PENDING
 

@@ -212,6 +212,7 @@ def main() -> None:
             "(ETL service: POST /transform/run, or the taxi_dbt_rebuild DAG)?"
         )
 
+
 # Two pages in the sidebar: the data dashboard (the function above) and the "How it works" guide.
 navigation = st.navigation(
     [
