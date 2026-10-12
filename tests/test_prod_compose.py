@@ -119,7 +119,9 @@ def caddy_blocks(text: str) -> dict[str, str]:
     current = None
 
     for line in text.splitlines():
-        if line and not line[0].isspace() and line.rstrip().endswith("{") and line[0] not in "({":
+        is_global = line.rstrip() == "{"
+        is_snippet = line.startswith("(")
+        if line and not line[0].isspace() and line.rstrip().endswith("{") and not is_global and not is_snippet:
             current = line.rstrip(" {")
             blocks[current] = ""
         elif current is not None:
