@@ -1,0 +1,108 @@
+# dbt/models/marts/_marts.yml
+# Descriptions (they appear in the documentation site) and automatic data tests.
+version: 2
+
+models:
+  - name: dim_date
+    description: One row per calendar day (2009 to 2035).
+    columns:
+      - name: date_key
+        description: Day as an integer, e.g. 20240115.
+        data_tests: [unique, not_null]
+
+  - name: dim_time
+    description: One row per hour of the day, with a day-part label.
+    columns:
+      - name: hour_key
+        data_tests: [unique, not_null]
+
+  - name: dim_zone
+    description: One row per taxi zone.
+    columns:
+      - name: zone_key
+        description: The TLC LocationID.
+        data_tests: [unique, not_null]
+
+  - name: dim_vendor
+    description: Technology provider of the trip record. -1 means not recorded.
+    columns:
+      - name: vendor_key
+        data_tests: [unique, not_null]
+
+  - name: dim_rate_code
+    description: Rate code in effect at the end of the trip. -1 means not recorded (flex fares).
+    columns:
+      - name: rate_code_key
+        data_tests: [unique, not_null]
+
+  - name: dim_payment_type
+    description: How the passenger paid.
+    columns:
+      - name: payment_type_key
+        data_tests: [unique, not_null]
+
+  - name: fct_trips
+    description: >
+      Fact table. One row per clean taxi trip. Incremental by month: a month reloaded by the loader
+      replaces its old rows.
+    columns:
+      - name: trip_id
+        description: Unique ID of the trip.
+        data_tests: [unique, not_null]
+      - name: month_key
+        description: Source month as an integer, e.g. 202401.
+        data_tests: [not_null]
+      - name: pickup_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: dropoff_date_key
+        data_tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: pickup_hour_key
+        data_tests:
+          - relationships:
+              to: ref('dim_time')
+              field: hour_key
+      - name: pickup_zone_key
+        data_tests:
+          - relationships:
+              to: ref('dim_zone')
+              field: zone_key
+      - name: dropoff_zone_key
+        data_tests:
+          - relationships:
+              to: ref('dim_zone')
+              field: zone_key
+      - name: payment_type_key
+        data_tests:
+          - relationships:
+              to: ref('dim_payment_type')
+              field: payment_type_key
+      # New vendor or rate codes can appear in future files. That deserves a warning, not a failure.
+      - name: vendor_key
+        data_tests:
+          - relationships:
+              to: ref('dim_vendor')
+              field: vendor_key
+              config:
+                severity: warn
+      - name: rate_code_key
+        data_tests:
+          - relationships:
+              to: ref('dim_rate_code')
+              field: rate_code_key
+              config:
+                severity: warn
+
+  - name: daily_revenue
+    description: One row per pickup day with trips and revenue.
+  - name: hourly_demand_by_zone
+    description: Trips per pickup zone, day of week and hour of day.
+  - name: tip_analysis
+    description: Tipping by payment type and day part. Cash tips are not recorded in the source data.
+    

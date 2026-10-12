@@ -1,0 +1,11 @@
+# monitoring/grafana/provisioning/datasources/prometheus.yml
+# Tells Grafana where Prometheus is, so the dashboard works on first start with nothing to click.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

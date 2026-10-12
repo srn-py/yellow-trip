@@ -218,3 +218,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Files dropped into the watched folder are data, not code
+data/dropzone/*
+!data/dropzone/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/*.ipynb
+notebooks/*.csv
+
+# dbt output
+dbt/target/
+dbt/logs/
+
+# Production secrets and backups (never commit these)
+.env.prod
+backups/
+
+docs

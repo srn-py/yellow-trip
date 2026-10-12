@@ -1,0 +1,126 @@
+# docker-compose.integration.yml
+# A small, separate copy of the platform for end-to-end tests.
+# Own project name, own volumes, own ports: it can run next to your real stack and never touches its data.
+# Use it with:  docker compose --env-file .env.example -f docker-compose.integration.yml -p taxi-it up -d --build --wait
+# (the env file is needed because this file is read with the default settings, not your .env)
+
+name: taxi-it
+
+services:
+  objectstore:
+    image: ${OBJECTSTORE_IMAGE:-pgsty/silo:RELEASE.2026-09-16T00-00-00Z}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - it-objectstore:/data
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    env_file: .env.example
+    depends_on:
+      - objectstore
+    ports:
+      - "18000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  cleaning:
+    build:
+      context: .
+      dockerfile: services/cleaning/Dockerfile
+    env_file: .env.example
+    depends_on:
+      - objectstore
+      - ingestion
+    ports:
+      - "18100:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  warehouse:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - it-warehouse:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  etl:
+    build:
+      context: .
+      dockerfile: services/etl/Dockerfile
+    env_file: .env.example
+    depends_on:
+      warehouse:
+        condition: service_healthy
+      objectstore:
+        condition: service_started
+      cleaning:
+        condition: service_started
+      ingestion:
+        condition: service_started
+    ports:
+      - "18200:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    env_file: .env.example
+    depends_on:
+      warehouse:
+        condition: service_healthy
+    ports:
+      - "18300:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  quality:
+    build:
+      context: .
+      dockerfile: services/quality/Dockerfile
+    env_file: .env.example
+    environment:
+      QUALITY_STARTUP_DELAY_SECONDS: "3600"   # the tests trigger the checks themselves
+    depends_on:
+      - warehouse
+    ports:
+      - "18400:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  it-objectstore:
+  it-warehouse:

@@ -1,0 +1,21 @@
+# dbt/models/staging/_staging.yml
+version: 2
+
+models:
+  - name: stg_trips
+    description: Tidy view over landing.trips (renamed columns, trip_id and month_key added).
+    columns:
+      - name: trip_id
+        description: Unique ID of the trip (MD5 of source file and row number).
+        data_tests:
+          - not_null
+      - name: pickup_datetime
+        data_tests:
+          - not_null
+
+  - name: stg_zones
+    description: Tidy view over landing.zones.
+    columns:
+      - name: location_id
+        data_tests:
+          - not_null

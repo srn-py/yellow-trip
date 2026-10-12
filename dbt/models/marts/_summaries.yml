@@ -1,0 +1,34 @@
+# dbt/models/marts/_summaries.yml
+# Descriptions and tests for the aggregate tables the analytics API reads.
+version: 2
+
+models:
+  - name: trip_summary
+    description: >
+      Additive summary of fct_trips by pickup date, hour, pickup borough, airport flag and payment type.
+      Stores sums and counts only, so any filter combination can be re-aggregated correctly.
+    columns:
+      - name: date
+        data_tests: [not_null]
+      - name: hour_of_day
+        data_tests: [not_null]
+      - name: pickup_borough
+        data_tests: [not_null]
+      - name: payment_type_key
+        data_tests: [not_null]
+      - name: trips
+        data_tests: [not_null]
+
+  - name: route_summary
+    description: >
+      Additive summary of fct_trips by month, pickup zone and drop-off zone.
+      Used for top zones and top routes. Month grain by design.
+    columns:
+      - name: month_key
+        data_tests: [not_null]
+      - name: pickup_zone
+        data_tests: [not_null]
+      - name: dropoff_zone
+        data_tests: [not_null]
+      - name: trips
+        data_tests: [not_null]

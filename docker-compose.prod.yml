@@ -1,0 +1,398 @@
+# docker-compose.prod.yml
+# The PRODUCTION stack. How it differs from the development stack (docker-compose.yml):
+#  - nothing is published to the internet except the reverse proxy (Caddy, ports 80 and 443)
+#  - images come from a registry, pinned by version (IMAGE_TAG); `up --build` builds the same tags locally
+#  - secrets come from .env.prod, and each container receives ONLY the ones it needs
+#  - every container has a memory limit, log rotation and a restart policy
+#  - two networks: "edge" (the proxy and what it serves) and "backend" (everything else)
+# Run it with deploy/prod.sh, which adds: --env-file .env.prod -f docker-compose.prod.yml
+
+name: taxi-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-base-env: &base-env
+  ENVIRONMENT: prod
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: json
+
+x-s3-env: &s3-env
+  S3_ENDPOINT_URL: http://objectstore:9000
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env.prod}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env.prod}
+
+x-db-env: &db-env
+  POSTGRES_HOST: warehouse
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-taxi_dw}
+  POSTGRES_USER: ${POSTGRES_USER:-taxi}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+
+services:
+  # ---- The only door to the internet: HTTPS, passwords, routing ------------------------
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"      # HTTP/3
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env.prod}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      OPS_USER: ${OPS_USER:?set OPS_USER in .env.prod}
+      OPS_PASSWORD_HASH: ${OPS_PASSWORD_HASH:?set OPS_PASSWORD_HASH in .env.prod}
+    volumes:
+      - ./deploy/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data                  # certificates: keep them, or Let's Encrypt rate limits bite
+      - caddy-config:/config
+    networks: [edge]
+    depends_on: [dashboard, airflow, grafana, ingestion]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *logging
+
+  # ---- Data lake -------------------------------------------------------------------------
+  objectstore:
+    image: ${OBJECTSTORE_IMAGE:-pgsty/silo:RELEASE.2026-09-16T00-00-00Z}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env.prod}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env.prod}
+    volumes:
+      - objectstore-data:/data
+    networks: [backend]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging: *logging
+
+  # ---- Ingestion (also reachable at ingest.<domain>, behind a password) ----------------------
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-ingestion:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: [*base-env, *s3-env]
+    volumes:
+      - ${DROPZONE_HOST_DIR:-./data/dropzone}:/data/dropzone
+      - ingestion-registry:/data/registry
+      - ./backups:/backups                # backup scripts write here
+    networks: [edge, backend]
+    depends_on:
+      - objectstore
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging: *logging
+
+  cleaning:
+    build:
+      context: .
+      dockerfile: services/cleaning/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-cleaning:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: [*base-env, *s3-env]
+      INGESTION_URL: http://ingestion:8000
+      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-2GB}
+    networks: [backend]
+    depends_on:
+      - objectstore
+      - ingestion
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    logging: *logging
+
+  # ---- Warehouse -------------------------------------------------------------------------
+  warehouse:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taxi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-taxi_dw}
+    volumes:
+      - warehouse-data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging: *logging
+
+  etl:
+    build:
+      context: .
+      dockerfile: services/etl/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-etl:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: [*base-env, *s3-env, *db-env]
+      INGESTION_URL: http://ingestion:8000
+      CLEANING_URL: http://cleaning:8000
+      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-2GB}
+    networks: [backend]
+    depends_on:
+      warehouse:
+        condition: service_healthy
+      objectstore:
+        condition: service_started
+      cleaning:
+        condition: service_started
+      ingestion:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    logging: *logging
+
+  # ---- Serving ---------------------------------------------------------------------------
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-analytics:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: [*base-env, *db-env]
+    networks: [backend]
+    depends_on:
+      warehouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-dashboard:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      ANALYTICS_URL: http://analytics:8000
+    networks: [edge, backend]
+    depends_on:
+      analytics:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging: *logging
+
+  quality:
+    build:
+      context: .
+      dockerfile: services/quality/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-quality:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: [*base-env, *db-env]
+      CLEANING_URL: http://cleaning:8000
+      ETL_URL: http://etl:8000
+      QUALITY_INTERVAL_SECONDS: ${QUALITY_INTERVAL_SECONDS:-300}
+    networks: [backend]
+    depends_on:
+      warehouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging: *logging
+
+  # ---- Orchestration ---------------------------------------------------------------------
+  airflow-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:?set AIRFLOW_DB_PASSWORD in .env.prod}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+  # The DAGs are baked into this image (services/airflow/Dockerfile): what runs is what was tested.
+  # No port is published: Airflow is reachable only through Caddy, which asks for a password first.
+  airflow:
+    build:
+      context: .
+      dockerfile: services/airflow/Dockerfile
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env.prod}/taxi-airflow:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?set AIRFLOW_DB_PASSWORD in .env.prod}@airflow-db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?set AIRFLOW_JWT_SECRET in .env.prod}
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"   # safe here: only Caddy can reach it, behind a password
+      INGESTION_URL: http://ingestion:8000
+      CLEANING_URL: http://cleaning:8000
+      ETL_URL: http://etl:8000
+      QUALITY_URL: http://quality:8000
+      PIPELINE_MONTH_LAG: ${PIPELINE_MONTH_LAG:-2}
+    volumes:
+      - airflow-logs:/opt/airflow/logs
+    networks: [edge, backend]
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v2/version', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    logging: *logging
+
+  # ---- Monitoring and alerts --------------------------------------------------------------
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./deploy/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks: [backend]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+  # The webhook address is a secret, so it travels as an environment variable and is written to a
+  # file when the container starts (Alertmanager reads it with `url_file`).
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.28.1}
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - printf '%s' "$$ALERT_WEBHOOK_URL" > /tmp/webhook_url && exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://127.0.0.1:9/webhook-not-configured}
+    volumes:
+      - ./deploy/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks: [backend]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *logging
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.3}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env.prod}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [edge, backend]
+    depends_on: [prometheus]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+networks:
+  edge:
+  backend:
+
+volumes:
+  caddy-data:
+  caddy-config:
+  objectstore-data:
+  ingestion-registry:
+  warehouse-data:
+  airflow-db-data:
+  airflow-logs:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

@@ -1,0 +1,8 @@
+# services/explorer/requirements.txt
+# Python libraries inside the explorer (JupyterLab) container.
+jupyterlab>=4.2          # the notebook environment
+jupytext>=1.16           # opens plain .py files (with "# %%" cells) as notebooks
+duckdb>=1.1              # SQL engine that reads Parquet straight from the data lake
+pandas>=2.2              # tables in Python; DuckDB results convert to these
+plotly>=5.22             # interactive charts
+pydantic-settings>=2.3   # the shared settings module needs it

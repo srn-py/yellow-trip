@@ -1,0 +1,93 @@
+{
+  "uid": "taxi-pipeline-health",
+  "title": "Pipeline health",
+  "tags": ["taxi"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "stat", "title": "Services up (of 5)", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "sum(up{job=\"platform-services\"})", "instant": true}],
+     "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 3}, {"color": "green", "value": 5}]}}, "overrides": []},
+     "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 2, "type": "stat", "title": "Alerts firing", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)", "instant": true}],
+     "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+     "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 3, "type": "stat", "title": "Since last load", "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "time() - taxi_etl_last_load_timestamp_seconds", "instant": true}],
+     "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+     "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 4, "type": "stat", "title": "Since last cleaning", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "time() - taxi_cleaning_last_success_timestamp_seconds", "instant": true}],
+     "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+     "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 5, "type": "stat", "title": "Quarantined (last month cleaned)", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "taxi_cleaning_last_quarantine_pct", "instant": true}],
+     "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 8}, {"color": "red", "value": 10}]}}, "overrides": []},
+     "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 6, "type": "stat", "title": "Last dbt run", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "taxi_etl_dbt_last_run_success", "instant": true}],
+     "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "FAILED", "color": "red", "index": 0}, "1": {"text": "OK", "color": "green", "index": 1}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+     "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 7, "type": "stat", "title": "Data quality checks", "gridPos": {"h": 5, "w": 24, "x": 0, "y": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "taxi_quality_check_status", "legendFormat": "{{check}}", "instant": true}],
+     "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "FAIL", "color": "red", "index": 0}, "1": {"text": "WARN", "color": "orange", "index": 1}, "2": {"text": "OK", "color": "green", "index": 2}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 1}, {"color": "green", "value": 2}]}}, "overrides": []},
+     "options": {"colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 8, "type": "timeseries", "title": "Requests per second by service", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "sum by (service) (rate(taxi_http_requests_total[5m]))", "legendFormat": "{{service}}"}],
+     "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}},
+
+    {"id": 9, "type": "timeseries", "title": "Request time (95th percentile) by service", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 9},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service) (rate(taxi_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{service}}"}],
+     "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}},
+
+    {"id": 10, "type": "timeseries", "title": "Rows per pipeline stage (per hour)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 17},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "sum(increase(taxi_ingest_rows_total[1h]))", "legendFormat": "ingested"},
+       {"refId": "B", "expr": "sum(increase(taxi_cleaning_rows_total{kind=\"clean\"}[1h]))", "legendFormat": "cleaned"},
+       {"refId": "C", "expr": "sum(increase(taxi_cleaning_rows_total{kind=\"quarantined\"}[1h]))", "legendFormat": "quarantined"},
+       {"refId": "D", "expr": "sum(increase(taxi_etl_rows_loaded_total[1h]))", "legendFormat": "loaded"}],
+     "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}},
+
+    {"id": 11, "type": "bargauge", "title": "Why rows were quarantined (since service start)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 17},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "sort_desc(sum by (rule) (taxi_cleaning_rule_violations_total))", "legendFormat": "{{rule}}", "instant": true}],
+     "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []},
+     "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 12, "type": "stat", "title": "Average run time (last 24 h)", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 25},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "sum(increase(taxi_cleaning_duration_seconds_sum[24h])) / sum(increase(taxi_cleaning_duration_seconds_count[24h]))", "legendFormat": "cleaning", "instant": true},
+       {"refId": "B", "expr": "sum(increase(taxi_etl_load_duration_seconds_sum[24h])) / sum(increase(taxi_etl_load_duration_seconds_count[24h]))", "legendFormat": "loading", "instant": true},
+       {"refId": "C", "expr": "sum(increase(taxi_etl_dbt_duration_seconds_sum[24h])) / sum(increase(taxi_etl_dbt_duration_seconds_count[24h]))", "legendFormat": "dbt", "instant": true}],
+     "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+     "options": {"colorMode": "value", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": {"calcs": ["lastNotNull"]}}},
+
+    {"id": 13, "type": "table", "title": "Active alerts", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 25},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "ALERTS{alertstate=~\"firing|pending\"}", "format": "table", "instant": true}],
+     "fieldConfig": {"defaults": {}, "overrides": []},
+     "options": {"showHeader": true}}
+  ]
+}

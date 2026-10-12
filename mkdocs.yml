@@ -1,0 +1,19 @@
+# mkdocs.yml
+site_name: NYC Taxi Data Platform
+site_description: Documentation for our data engineering platform
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid            # lets us draw diagrams from text
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format

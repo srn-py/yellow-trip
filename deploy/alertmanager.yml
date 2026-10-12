@@ -1,0 +1,19 @@
+# deploy/alertmanager.yml
+# Where alerts go. Prometheus decides WHEN something is wrong (monitoring/prometheus/alerts.yml);
+# Alertmanager decides WHO is told, groups repeats and sends "resolved" messages.
+#
+# The receiver is a generic webhook: Alertmanager POSTs JSON to ALERT_WEBHOOK_URL (set in .env.prod).
+# Try it for free with https://webhook.site, or point it at ntfy, n8n, Zapier, or your own service.
+# For Slack, replace the receiver with a slack_configs entry (see docs/deployment.md).
+route:
+  receiver: webhook
+  group_by: [alertname, service]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url_file: /tmp/webhook_url
+        send_resolved: true

@@ -1,0 +1,60 @@
+# monitoring/prometheus/alerts.yml
+# When something is wrong, these rules turn "pending" and then "firing".
+# See them at http://localhost:9090/alerts and in the Grafana dashboard.
+# docs/runbook.md explains what to do for each one.
+groups:
+  - name: taxi-platform
+    rules:
+      - alert: ServiceDown
+        expr: up{job="platform-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is not answering"
+          description: "Prometheus cannot read http://{{ $labels.instance }}/metrics."
+
+      - alert: DataQualityCheckFailing
+        expr: taxi_quality_check_status == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Data quality check '{{ $labels.check }}' is failing"
+          description: "Open http://localhost:8400/checks/latest for the explanation."
+
+      - alert: DataQualityCheckWarning
+        expr: taxi_quality_check_status == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data quality check '{{ $labels.check }}' has a warning"
+          description: "Open http://localhost:8400/checks/latest for the explanation."
+
+      - alert: HighQuarantineRate
+        expr: taxi_cleaning_last_quarantine_pct > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The last cleaned month quarantined {{ $value | printf \"%.1f\" }}% of its rows"
+          description: "Normal is about 5%. Keep this number in step with QUALITY_MAX_QUARANTINE_PCT."
+
+      - alert: DbtRunFailing
+        expr: taxi_etl_dbt_last_run_success == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last dbt run failed"
+          description: "Run POST /transform/last-run on the ETL service for the problems."
+
+      - alert: ServerErrors
+        expr: sum by (service) (rate(taxi_http_requests_total{status=~"5.."}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} is returning server errors"
+          description: "Look at the service logs: docker compose logs {{ $labels.service }} --tail=50"

@@ -1,0 +1,9 @@
+# services/ingestion/requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+httpx>=0.27              # downloads files from the TLC website
+boto3>=1.36              # talks to S3-compatible object storage
+pyarrow>=16.0            # reads Parquet/CSV to count rows and validate files
+python-multipart>=0.0.9  # required by FastAPI for file uploads
+prometheus-client>=0.20  # exposes /metrics for Prometheus

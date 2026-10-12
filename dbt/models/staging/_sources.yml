@@ -1,0 +1,14 @@
+# dbt/models/staging/_sources.yml
+# Tells dbt about tables it did NOT build (the loader created them), so models can refer to
+# them with source() and the lineage graph starts from here.
+version: 2
+
+sources:
+  - name: landing
+    schema: landing
+    description: Clean data loaded from the data lake by the ETL service's loader.
+    tables:
+      - name: trips
+        description: One row per clean taxi trip, exactly as produced by the cleaning service.
+      - name: zones
+        description: NYC taxi zone lookup (zone ID to borough and zone name).

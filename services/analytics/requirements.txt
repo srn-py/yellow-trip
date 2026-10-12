@@ -1,0 +1,6 @@
+# services/analytics/requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+psycopg2-binary>=2.9     # PostgreSQL driver
+prometheus-client>=0.20  # exposes /metrics for Prometheus

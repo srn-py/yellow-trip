@@ -1,0 +1,7 @@
+# services/quality/requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+httpx>=0.27              # calls the cleaning and ETL APIs
+psycopg2-binary>=2.9     # reads the warehouse (read-only)
+prometheus-client>=0.20  # exposes the check results as metrics

@@ -1,0 +1,29 @@
+# pyproject.toml
+# Settings for developer tools (linter/formatter and test runner).
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: errors and unused code | I: import order | B: likely bugs
+# UP: modern Python syntax | D: docstring rules (we require docstrings!)
+select = ["E", "F", "I", "B", "UP", "D"]
+ignore = [
+    "E501",  # line length: the formatter wraps code; long strings, SQL and comments are allowed
+    "D107",  # __init__ docstring: the class docstring covers it
+    "D417",  # do not force every single argument to be documented
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]  # tests are self-explanatory by name
+"notebooks/*" = ["D", "E402", "E501", "B018"]  # notebooks are scripts, not libraries
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "services/ingestion", "services/cleaning", "services/etl", "services/analytics", "services/dashboard", "services/quality", "airflow/dags"]
+markers = ["integration: end-to-end tests that need the throw-away stack (docker-compose.integration.yml)"]
+addopts = "-m 'not integration'"
