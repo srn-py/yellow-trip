@@ -199,12 +199,20 @@ def test_analytics_api_serves_the_modelled_data(pipeline):
     assert flex and flex[0]["trips"] == 1
 
 
-def test_quality_checks_find_no_failures(pipeline):
+def test_quality_checks_flag_the_dirty_sample_and_nothing_else(pipeline):
     quality = pipeline["quality"]
-    assert quality["status"] != "fail", quality["checks"]
     by_name = {check["name"]: check for check in quality["checks"]}
+    failing = [name for name, check in by_name.items() if check["status"] == "fail"]
+
+    # 2 of the 5 sample trips are rejected (40%), far above the 10% limit: the check must catch that.
+    assert failing == ["quarantine_rate"], quality["checks"]
+    assert quality["status"] == "fail"
+    assert by_name["quarantine_rate"]["value"] == 40.0
+
+    # Everything else about this sample is healthy.
     assert by_name["row_reconciliation"]["status"] == "ok"
     assert by_name["schema_drift"]["status"] == "ok"
+    assert by_name["dbt_last_run"]["status"] == "ok"
 
 
 def test_a_corrupt_file_is_rejected_with_a_clear_error(http, stack):
