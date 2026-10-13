@@ -1,0 +1,11 @@
+# requirements-dev.txt
+# Tools YOU install on your own machine (inside a virtualenv) for testing,
+# linting and documentation. The containers have their own requirements files.
+-r services/ingestion/requirements.txt
+-r services/cleaning/requirements.txt
+pytest>=8.0
+httpx>=0.27            # needed by FastAPI's TestClient
+ruff>=0.6
+pre-commit>=3.7
+mkdocs-material>=9.5
+pyyaml>=6.0

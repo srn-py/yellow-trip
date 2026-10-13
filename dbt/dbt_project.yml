@@ -1,0 +1,25 @@
+# dbt/dbt_project.yml
+# Describes the dbt project: where things are and how each folder is built.
+name: taxi_platform
+version: "1.0.0"
+config-version: 2
+profile: taxi_platform          # which entry of profiles.yml to use
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+target-path: "target"           # compiled SQL, results and the documentation site
+log-path: "logs"
+clean-targets: ["target", "logs"]
+
+models:
+  taxi_platform:
+    staging:
+      +materialized: view       # views: no data copied, always up to date
+      +schema: staging          # built in schema analytics_staging
+    marts:
+      +materialized: table      # real tables: fast to query (schema: analytics)
+
+seeds:
+  taxi_platform:
+    +schema: reference          # lookup tables, built in schema analytics_reference

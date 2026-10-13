@@ -1,0 +1,2 @@
+# airflow/dags/.airflowignore
+taxi_pipeline

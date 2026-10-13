@@ -1,0 +1,60 @@
+# docker-compose.monitoring.yml
+# The monitoring stack: quality service, Prometheus, Grafana.
+# Included by docker-compose.yml (Docker Compose 2.20+). To save memory, stop what you do not need:
+#   docker compose stop prometheus grafana quality
+
+services:
+  # ---- Data quality checks (also exposes /metrics) -----------------------------
+  quality:
+    build:
+      context: .
+      dockerfile: services/quality/Dockerfile
+    container_name: taxi-quality
+    env_file: .env
+    ports:
+      - "${QUALITY_PORT:-8400}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---- Prometheus: collects metrics every 15 seconds ---------------------------------
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}
+    container_name: taxi-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  # ---- Grafana: dashboards ---------------------------------------------------------
+  # NOTE: in "ports", the number after the second colon must stay 3000 (Grafana's internal port).
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.3}
+    container_name: taxi-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

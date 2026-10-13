@@ -1,0 +1,12 @@
+# monitoring/grafana/provisioning/dashboards/dashboards.yml
+# Tells Grafana to load every dashboard JSON file found in the folder below.
+apiVersion: 1
+providers:
+  - name: taxi-platform
+    orgId: 1
+    folder: Taxi platform
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

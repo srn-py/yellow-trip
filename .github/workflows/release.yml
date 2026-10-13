@@ -1,0 +1,47 @@
+# .github/workflows/release.yml
+# Publishes the Docker images when you push a version tag, for example:
+#   git tag v1.0.0 && git push origin v1.0.0
+# Only tag commits whose CI run (ci.yml) is green.
+# Images appear on GitHub under your profile or organisation, Packages. Names: taxi-<service>:1.0.0 and :latest.
+name: Release images
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+  packages: write           # lets the workflow push to ghcr.io with the built-in token
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ingestion, cleaning, etl, analytics, quality, dashboard, airflow]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Work out the image name and tags
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"        # registry names must be lowercase
+          version="${GITHUB_REF_NAME#v}"              # v1.0.0 becomes 1.0.0
+          image="ghcr.io/${owner}/taxi-${{ matrix.service }}"
+          echo "tags=${image}:${version},${image}:latest" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

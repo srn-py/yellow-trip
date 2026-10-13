@@ -1,0 +1,5 @@
+# services/dashboard/requirements.txt
+streamlit>=1.50          # the dashboard framework (current chart width API)
+httpx>=0.27              # calls the analytics API
+pandas>=2.2              # tables
+plotly>=5.22             # interactive charts

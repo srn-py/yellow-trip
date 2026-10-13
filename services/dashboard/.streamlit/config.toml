@@ -1,0 +1,6 @@
+# services/dashboard/.streamlit/config.toml
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

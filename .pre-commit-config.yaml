@@ -1,0 +1,24 @@
+# .pre-commit-config.yaml
+# Checks that run automatically on every `git commit`, so problems never reach the repository.
+# Enable once with: pre-commit install      Run on everything now: pre-commit run --all-files
+# Update the versions below with: pre-commit autoupdate
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+        exclude: ^mkdocs\.yml$        # uses a special tag that the checker does not know
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key

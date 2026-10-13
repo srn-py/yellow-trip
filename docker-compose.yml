@@ -1,0 +1,228 @@
+# docker-compose.yml
+# Milestone 6: lake, ingestion, cleaning, warehouse, ETL, Airflow, analytics API, dashboard, explorer.
+
+name: taxi-platform
+
+include:
+  - docker-compose.monitoring.yml
+
+services:
+  # ---- Data lake: S3-compatible object storage ----------------------------
+  objectstore:
+    image: ${OBJECTSTORE_IMAGE:-pgsty/silo:RELEASE.2026-09-16T00-00-00Z}
+    container_name: taxi-objectstore
+    command: server /data --console-address ":9001"
+    environment:
+      # Silo is a MinIO fork and still reads MINIO_* variable names.
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    ports:
+      - "${OBJECTSTORE_API_PORT:-9000}:9000"
+      - "${OBJECTSTORE_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - objectstore-data:/data
+    restart: unless-stopped
+
+  # ---- Ingestion service ---------------------------------------------------
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: taxi-ingestion
+    env_file: .env
+    depends_on:
+      - objectstore
+    ports:
+      - "${INGESTION_PORT:-8000}:8000"
+    volumes:
+      - ./data/dropzone:/data/dropzone
+      - ingestion-registry:/data/registry
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---- Cleaning service: raw -> clean + quarantine ---------------------------
+  cleaning:
+    build:
+      context: .
+      dockerfile: services/cleaning/Dockerfile
+    container_name: taxi-cleaning
+    env_file: .env
+    depends_on:
+      - objectstore
+      - ingestion
+    ports:
+      - "${CLEANING_PORT:-8100}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---- Data warehouse: PostgreSQL ----------------------------------------------
+  warehouse:
+    image: postgres:16-alpine
+    container_name: taxi-warehouse
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${WAREHOUSE_PORT:-5433}:5432"
+    volumes:
+      - warehouse-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ---- ETL service: load clean data into the warehouse, run dbt ---------------
+  etl:
+    build:
+      context: .
+      dockerfile: services/etl/Dockerfile
+    container_name: taxi-etl
+    env_file: .env
+    depends_on:
+      warehouse:
+        condition: service_healthy
+      objectstore:
+        condition: service_started
+      cleaning:
+        condition: service_started
+      ingestion:
+        condition: service_started
+    ports:
+      - "${ETL_PORT:-8200}:8000"
+    volumes:
+      - ./dbt:/app/dbt
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---- Analytics API: the only reader of the warehouse -----------------------
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    container_name: taxi-analytics
+    env_file: .env
+    depends_on:
+      warehouse:
+        condition: service_healthy
+    ports:
+      - "${ANALYTICS_PORT:-8300}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---- Dashboard: Streamlit, talks only to the analytics API -----------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: taxi-dashboard
+    env_file: .env
+    depends_on:
+      analytics:
+        condition: service_healthy
+    ports:
+      - "${DASHBOARD_PORT:-8501}:8501"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---- Airflow's own small database (NOT the warehouse) -----------------------
+  airflow-db:
+    image: postgres:16-alpine
+    container_name: taxi-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ---- Airflow: orchestration and scheduling ---------------------------------
+  # `standalone` runs the API server/UI, scheduler, DAG processor and triggerer together.
+  # NOTE: in "ports", the number after the second colon must stay 8080 (Airflow's internal port).
+  airflow:
+    image: ${AIRFLOW_IMAGE:-apache/airflow:3.3.2}
+    container_name: taxi-airflow
+    command: standalone
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      INGESTION_URL: http://ingestion:8000
+      CLEANING_URL: http://cleaning:8000
+      ETL_URL: http://etl:8000
+      QUALITY_URL: http://quality:8000
+      PIPELINE_MONTH_LAG: ${PIPELINE_MONTH_LAG:-2}
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v2/version', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    restart: unless-stopped
+
+  # ---- Explorer: JupyterLab + DuckDB for exploring and profiling data -----
+  explorer:
+    build:
+      context: .
+      dockerfile: services/explorer/Dockerfile
+    container_name: taxi-explorer
+    env_file: .env
+    depends_on:
+      - objectstore
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+volumes:
+  objectstore-data:
+  ingestion-registry:
+  warehouse-data:
+  airflow-db-data:
+  airflow-logs:

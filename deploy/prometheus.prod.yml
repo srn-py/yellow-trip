@@ -1,0 +1,33 @@
+# deploy/prometheus.prod.yml
+# The production Prometheus configuration: the development one plus Alertmanager.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: platform-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - ingestion:8000
+          - cleaning:8000
+          - etl:8000
+          - analytics:8000
+          - quality:8000
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.*"
+        target_label: service
+        replacement: "$1"
+
+  - job_name: infrastructure
+    static_configs:
+      - targets: ["localhost:9090", "alertmanager:9093"]

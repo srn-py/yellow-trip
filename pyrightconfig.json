@@ -1,0 +1,16 @@
+{
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    ".",
+    "services/ingestion",
+    "services/cleaning",
+    "services/etl",
+    "services/analytics",
+    "services/dashboard",
+    "services/quality",
+    "airflow/dags",
+    "shared"
+  ]
+}

@@ -1,0 +1,11 @@
+# services/cleaning/requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+httpx>=0.27              # calls the ingestion service API
+boto3>=1.36              # reads raw files, writes clean/quarantine/report objects
+duckdb>=1.1              # SQL engine that applies the cleaning rules
+pyarrow>=16.0            # reads Parquet files in chunks for the contract check
+pandas>=2.2              # table type Pandera validates
+pandera>=0.24            # data contract checks on the cleaned output
+prometheus-client>=0.20  # exposes /metrics for Prometheus
